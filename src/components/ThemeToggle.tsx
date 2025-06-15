@@ -5,10 +5,7 @@ import { currentTheme, storeActions } from '../store';
 export const ThemeToggle = () => {
   const theme = currentTheme.value;
   
-  console.log('ThemeToggle rendered with theme:', theme);
-
   const handlePress = () => {
-    console.log('ThemeToggle pressed, current theme:', theme);
     storeActions.toggleTheme();
   };
   

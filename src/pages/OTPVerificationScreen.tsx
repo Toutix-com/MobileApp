@@ -8,19 +8,24 @@ import {
   Image,
   TextInput,
   KeyboardAvoidingView,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
 import { ChevronLeft } from 'lucide-react-native';
 import { AuthStackParamList } from '../navigation/AuthStack';
 import GradientLayout from '../components/layouts/GradientLayout';
+import { verifyOtp } from '../services/ApiService';
+import { rootStore, setUser } from '../store/rootStore';
+import * as Keychain from 'react-native-keychain';
 
 type OTPVerificationScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'OTPVerification'>;
 
 interface OTPVerificationScreenProps {
   route: {
     params: {
-      email: string;
+      email?: string;
+      mobileNumber?: string;
       type: 'email' | 'mobile';
     };
   };
@@ -30,7 +35,7 @@ const OTPVerificationScreen: React.FC<OTPVerificationScreenProps> = ({ route }) 
   const navigation = useNavigation<OTPVerificationScreenNavigationProp>();
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const [timeLeft, setTimeLeft] = useState(45);
-  
+  const store = rootStore.value;
   const inputRefs = useRef<Array<TextInput | null>>([]);
 
   useEffect(() => {
@@ -82,17 +87,31 @@ const OTPVerificationScreen: React.FC<OTPVerificationScreenProps> = ({ route }) 
     }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     const otpString = otp.join('');
-    // TODO: Implement verification logic
-    console.log('Verifying OTP:', otpString);
+    try {
+      const res = await verifyOtp({ email: route.params.email || '', otp: otpString });
+      if (res && res.status === 200 && res.data) {
+        setUser({
+          ...rootStore.value.user,
+          isNewUser: res.data.isNewUser,
+          role: res.data.role,
+          isAuthenticated: res.data.isNewUser ? false : true
+        });
+        await Keychain.setGenericPassword('auth', res.data.token);
+        res.data.isNewUser && navigation.navigate('Register');
+      } else {
+        Alert.alert('Error', res?.message || 'Invalid OTP');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to verify OTP');
+    }
   };
 
   const handleResend = () => {
     if (timeLeft === 0) {
       setTimeLeft(45);
       // TODO: Implement resend logic
-      console.log('Resending OTP');
     }
   };
 
@@ -185,7 +204,7 @@ const OTPVerificationScreen: React.FC<OTPVerificationScreenProps> = ({ route }) 
 const styles = StyleSheet.create({
   backButton: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 20,
+    top: Platform.OS === 'ios' ? 50 : 50,
     left: 20,
     width: 40,
     height: 40,
@@ -197,7 +216,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: Platform.OS === 'ios' ? 100 : 70,
+    marginTop: Platform.OS === 'ios' ? 120 : 120,
     marginBottom: 40,
   },
   logo: {

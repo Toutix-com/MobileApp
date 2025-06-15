@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Image,
   Platform,
   Dimensions,
+  Alert,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
@@ -15,7 +16,9 @@ import { AuthStackParamList } from '../navigation/AuthStack';
 import GradientLayout from '../components/layouts/GradientLayout';
 import GoogleIcon from '../assets/icons/google.svg';
 import AppleIcon from '../assets/icons/apple.svg';
-
+import GoogleSignInService from '../services/GoogleSignInService';
+import { loginWithOtp } from '../services/ApiService';
+import { rootStore, setUser } from '../store/rootStore';
 type LoginScreenNavigationProp = StackNavigationProp<AuthStackParamList, 'Login'>;
 
 const { width } = Dimensions.get('window');
@@ -25,9 +28,101 @@ const LoginScreen: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [keepLoggedIn, setKeepLoggedIn] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    GoogleSignInService.init();
+  }, []);
 
   const handleRegisterPress = () => {
     navigation.navigate('Register');
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      const result = await GoogleSignInService.signIn();
+      if (result && result.email) {
+        // Split name into first and last
+        let firstName = '';
+        let lastName = '';
+        if (result.name) {
+          const nameParts = result.name.trim().split(' ');
+          firstName = nameParts[0];
+          lastName = nameParts.slice(1).join(' ');
+        }
+        // Save user data in store
+        setUser({
+          ...rootStore.value.user,
+          email: result.email,
+          firstName,
+          lastName
+        });
+        // Call loginWithOtp API
+        const response = await loginWithOtp({ email: result.email });
+        if (response && response.ok) {
+          navigation.navigate('OTPVerification', {
+            email: result.email,
+            type: 'email',
+          });
+        } else {
+          Alert.alert('Error', response?.message || 'Failed to send OTP');
+        }
+      } else {
+        Alert.alert('Error', 'Failed to sign in with Google');
+      }
+    } catch (error) {
+      console.error('Google Sign In Error:', error);
+      Alert.alert('Error', 'Failed to sign in with Google');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const validateInput = (value: string) => {
+    const emailRegex = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+    const phoneRegex = /^\+?\d{10,15}$/;
+    if (emailRegex.test(value)) return { type: 'email', value };
+    if (phoneRegex.test(value)) return { type: 'mobileNumber', value };
+    return null;
+  };
+
+  const handleContinue = async () => {
+    if (!email) {
+      Alert.alert('Error', 'Please enter your email or mobile number');
+      return;
+    }
+    const valid = validateInput(email.trim());
+    if (!valid) {
+      Alert.alert('Error', 'Please enter a valid email or mobile number');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      let response;
+      if (valid.type === 'email') {
+        setUser({ ...rootStore.value.user, email: valid.value, mobileNumber: undefined });
+        response = await loginWithOtp({ email: valid.value });
+      } else {
+        setUser({ ...rootStore.value.user, mobileNumber: valid.value, email: undefined });
+        response = await loginWithOtp({ mobileNumber: valid.value });
+      }
+      console.log("Response",response?.ok);
+      
+      if (response && response?.ok) {
+        navigation.navigate('OTPVerification', {
+          email: valid.type === 'email' ? valid.value : undefined,
+          mobileNumber: valid.type === 'mobileNumber' ? valid.value : undefined,
+          type: valid.type === 'email' ? 'email' : 'mobile',
+        });
+      } else {
+        Alert.alert('Error', response?.message || 'Failed to send OTP');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to send OTP');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -45,76 +140,64 @@ const LoginScreen: React.FC = () => {
         <Text style={styles.tagline}>Find It, Book It, Live It</Text>
       </View>
 
-      <View style={styles.registerContainer}>
-        <Text style={styles.registerText}>New here? </Text>
-        <TouchableOpacity onPress={handleRegisterPress}>
-          <Text style={styles.registerLink}>Register now →</Text>
-        </TouchableOpacity>
-      </View>
 
       <View style={styles.formContainer}>
-        <Text style={styles.title}>Log in to your account</Text>
+        <Text style={styles.title}>Log in or sign up</Text>
         
         <View style={styles.inputContainer}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email or mobile</Text>
           <TextInput
             style={styles.input}
-            placeholder="Enter your email"
+            placeholder="Email/ mobile number"
             placeholderTextColor="#A0A0A0"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
             autoCapitalize="none"
+            editable={!isLoading}
           />
         </View>
-
-        <View style={styles.inputContainer}>
-          <Text style={styles.label}>Password</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#A0A0A0"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-          />
-        </View>
+        <Text style={styles.description}>We'll send you a code to log in to your account</Text>
+        
 
         <TouchableOpacity 
-          style={styles.checkboxContainer}
-          onPress={() => setKeepLoggedIn(!keepLoggedIn)}
+          style={[styles.loginButton, isLoading && { opacity: 0.7 }]} 
+          disabled={isLoading}
+          onPress={handleContinue}
         >
-          <View style={[styles.checkbox, keepLoggedIn && styles.checkboxChecked]}>
-            {keepLoggedIn && <Text style={styles.checkmark}>✓</Text>}
-          </View>
-          <Text style={styles.checkboxLabel}>Keep me logged in</Text>
+          <Text style={styles.loginButtonText}>Continue</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.loginButton}>
-          <Text style={styles.loginButtonText}>Log in</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.forgotPassword}>
-          <Text style={styles.forgotPasswordText}>Forgot password</Text>
-        </TouchableOpacity>
 
         <View style={styles.dividerContainer}>
           <View style={styles.divider} />
-          <Text style={styles.dividerText}>Or use</Text>
+          <Text style={styles.dividerText}>Or</Text>
           <View style={styles.divider} />
         </View>
 
         <View style={styles.socialButtonsContainer}>
-          <TouchableOpacity style={styles.socialButton}>
+          <TouchableOpacity 
+            style={[styles.socialButton, isLoading && { opacity: 0.7 }]} 
+            onPress={handleGoogleSignIn}
+            disabled={isLoading}
+          >
             <GoogleIcon width={20} height={20} />
-            <Text style={styles.socialButtonText}>Google</Text>
+            <Text style={styles.socialButtonText}>
+              {isLoading ? 'Connecting...' : 'Continue with Google'}
+            </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.socialButton}>
-            <AppleIcon width={20} height={20} />
-            <Text style={styles.socialButtonText}>Apple</Text>
-          </TouchableOpacity>
+          
         </View>
+        <View style={styles.socialButtonsContainer}>
+        <TouchableOpacity 
+            style={[styles.socialButton, isLoading && { opacity: 0.7 }]}
+            disabled={isLoading}
+          >
+            <AppleIcon width={20} height={20} />
+            <Text style={styles.socialButtonText}>Continue with Apple</Text>
+          </TouchableOpacity>
+      </View>
       </View>
     </GradientLayout>
   );
@@ -126,7 +209,7 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 20,
+    top: Platform.OS === 'ios' ? 50 : 50,
     left: 20,
     width: 40,
     height: 40,
@@ -142,7 +225,7 @@ const styles = StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: Platform.OS === 'ios' ? 120 : 90,
+    marginTop: Platform.OS === 'ios' ? 120 : 120,
     paddingHorizontal: 20,
   },
   logo: {
@@ -154,30 +237,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 28,
     fontWeight: '600',
-    marginTop: 24,
+    marginTop: 14,
     textAlign: 'center',
-  },
-  registerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 24,
-  },
-  registerText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  registerLink: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    textDecorationLine: 'underline',
   },
   formContainer: {
     backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    marginTop: 24,
+    marginTop: 44,
     flex: 1,
     paddingBottom: Platform.OS === 'ios' ? 34 : 24,
   },
@@ -185,6 +253,12 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: '600',
     color: '#000000',
+    marginBottom: 24,
+  },
+  description:{
+    fontSize: 14,
+    fontWeight: '400',
+    color: '#5C636E',
     marginBottom: 24,
   },
   inputContainer: {
@@ -236,6 +310,7 @@ const styles = StyleSheet.create({
     padding: 16,
     alignItems: 'center',
     marginBottom: 16,
+    marginTop:'20%'
   },
   loginButtonText: {
     color: '#FFFFFF',
@@ -271,10 +346,10 @@ const styles = StyleSheet.create({
   },
   socialButton: {
     flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'flex-start',
+    justifyContent: 'flex-start',
     borderRadius: 8,
-    padding: 16,
+    padding: 12,
     marginBottom: 12,
     borderColor:'#0C0453',
     borderWidth:1,

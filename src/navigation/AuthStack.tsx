@@ -13,7 +13,8 @@ export type AuthStackParamList = {
     mobileNumber?: string;
   };
   OTPVerification: {
-    email: string;
+    email?: string;
+    mobileNumber?: string;
     type: 'email' | 'mobile';
   };
 };
@@ -26,8 +27,9 @@ const AuthStack = () => {
       screenOptions={{
         headerShown: false,
       }}>
+              <Stack.Screen name="Register" component={RegisterScreen} />
       <Stack.Screen name="Login" component={LoginScreen} />
-      <Stack.Screen name="Register" component={RegisterScreen} />
+
       <Stack.Screen name="Verification" component={VerificationScreen} />
       <Stack.Screen name="OTPVerification" component={OTPVerificationScreen} />
     </Stack.Navigator>
