@@ -136,10 +136,6 @@ const OTPVerificationScreen: React.FC<OTPVerificationScreenProps> = ({ route }) 
         <Text style={styles.tagline}>Find It, Book It, Live It</Text>
       </View>
 
-      <KeyboardAvoidingView 
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        style={styles.keyboardAvoidingView}
-      >
         <View style={styles.card}>
           <Text style={styles.title}>Verify your email</Text>
           <Text style={styles.subtitle}>
@@ -196,7 +192,7 @@ const OTPVerificationScreen: React.FC<OTPVerificationScreenProps> = ({ route }) 
             </Text>
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+     
     </GradientLayout>
   );
 };
